@@ -1,4 +1,5 @@
 import type { MentionItem, MentionQueryMatch, NativeEditorCommand } from '../types';
+import { caretAfterChipSpace } from './dom';
 
 const MENTION_QUERY_PATTERN = /(?:^|[\s([{])@([\p{L}\p{N}._-]*)$/u;
 const MENTION_SELECTOR = 'span.erag-mention[data-erag-mention="true"]';
@@ -61,13 +62,10 @@ export function insertMentionAtRange(root: HTMLElement, range: Range, item: Ment
 
     const mention = createMentionElement(item);
     range.deleteContents();
-    const space = document.createTextNode(' ');
-    range.insertNode(space);
     range.insertNode(mention);
-    range.setStartAfter(space);
-    range.collapse(true);
+    const caret = caretAfterChipSpace(mention);
     selection.removeAllRanges();
-    selection.addRange(range);
+    selection.addRange(caret);
     root.dispatchEvent(
         new InputEvent('input', {
             bubbles: true,

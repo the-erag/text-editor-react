@@ -27,6 +27,10 @@ export function TableDialog({ size, onClose, onSave }: TableDialogProps) {
                 {cells.map((index) => {
                     const row = Math.ceil(index / size);
                     const column = ((index - 1) % size) + 1;
+                    const highlight = (): void => {
+                        setRows(row);
+                        setColumns(column);
+                    };
                     return (
                         <button
                             key={index}
@@ -36,11 +40,9 @@ export function TableDialog({ size, onClose, onSave }: TableDialogProps) {
                                 row <= rows && column <= columns && 'erag-is-active',
                             )}
                             aria-label={`${row} rows by ${column} columns`}
-                            onMouseEnter={() => {
-                                setRows(row);
-                                setColumns(column);
-                            }}
-                            onClick={() => onSave(rows, columns)}
+                            onMouseEnter={highlight}
+                            onFocus={highlight}
+                            onClick={() => onSave(row, column)}
                         />
                     );
                 })}

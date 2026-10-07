@@ -111,6 +111,7 @@ export function createImageResize(
             image.setAttribute('height', String(Math.round(finalRect.height)));
             image.style.removeProperty('width');
             image.style.removeProperty('height');
+            if (!image.getAttribute('style')?.trim()) image.removeAttribute('style');
             changed();
             refresh();
         };

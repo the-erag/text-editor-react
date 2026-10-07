@@ -73,6 +73,7 @@ export const Editor = forwardRef<EditorInstance, EditorProps>(function Editor(pr
                         menus={menubar === true ? true : menubar}
                         plugins={config.plugins}
                         disabled={disabled}
+                        locked={locked}
                         activeCommands={ctx.activeCommands.value}
                         availableCommands={ctx.availableCommands.value}
                         insideTable={selection.state.value.insideTable}
@@ -95,6 +96,7 @@ export const Editor = forwardRef<EditorInstance, EditorProps>(function Editor(pr
                         toolbar={toolbar}
                         config={config}
                         disabled={disabled}
+                        locked={locked}
                         activeCommands={ctx.activeCommands.value}
                         availableCommands={ctx.availableCommands.value}
                         insideTable={selection.state.value.insideTable}

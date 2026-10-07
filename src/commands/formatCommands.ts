@@ -11,15 +11,69 @@ export function executeFormatCommand(
     root.focus({ preventScroll: true });
     if (id === 'removeformat') return clearFormatting(root, executeCommand);
     if (id === 'formatBlock') return executeCommand('formatBlock', value ?? 'p');
-    if (id === 'fontfamily') return executeCommand('fontName', value ?? 'Arial');
+    if (id === 'fontfamily') return executeWithCss(executeCommand, 'fontName', value ?? 'Arial');
     if (id === 'fontsize') return applyInlineStyle(root, 'fontSize', value ?? '12pt');
     if (id === 'lineheight') return applyInlineStyle(root, 'lineHeight', value ?? '1.5');
-    if (id === 'forecolor') return executeCommand('foreColor', value ?? '#000000');
+    if (id === 'forecolor') return executeWithCss(executeCommand, 'foreColor', value ?? '#000000');
     if (id === 'backcolor') return executeCommand('hiliteColor', value ?? 'transparent');
-    if (id === 'inlineCode') return executeCommand('formatBlock', 'pre');
+    if (id === 'inlineCode') return toggleInlineCode(root);
     if (id === 'changeCase' && isTextCaseMode(value)) return changeSelectionCase(root, value);
     const command = FORMAT_COMMANDS[id];
     return command ? executeCommand(command) : false;
+}
+
+/**
+ * Without `styleWithCSS`, `fontName` and `foreColor` write `<font>` tags, which
+ * the sanitizer strips, so the formatting would be lost on reload.
+ */
+function executeWithCss(
+    executeCommand: NativeEditorCommand,
+    command: string,
+    value: string,
+): boolean {
+    executeCommand('styleWithCSS', 'true');
+    try {
+        return executeCommand(command, value);
+    } finally {
+        executeCommand('styleWithCSS', 'false');
+    }
+}
+
+/**
+ * Builds the `<code>` element through the DOM: `formatBlock` would make a `pre`
+ * block, and Chrome rewrites `insertHTML('<code>')` into a font span.
+ */
+function toggleInlineCode(root: HTMLElement): boolean {
+    const selection = window.getSelection();
+    if (!selection?.rangeCount) return false;
+    const range = selection.getRangeAt(0);
+    if (!root.contains(range.commonAncestorContainer)) return false;
+    const start = range.startContainer;
+    const current = (start instanceof Element ? start : start.parentElement)?.closest('code');
+    if (current && root.contains(current) && !current.closest('pre')) {
+        const contents = document.createRange();
+        const first = current.firstChild;
+        const last = current.lastChild;
+        current.replaceWith(...current.childNodes);
+        if (first && last) {
+            contents.setStartBefore(first);
+            contents.setEndAfter(last);
+            selection.removeAllRanges();
+            selection.addRange(contents);
+        }
+        return true;
+    }
+    // An empty `<code>` cannot hold the caret, so typed text would land outside it.
+    if (range.collapsed) return false;
+    const code = document.createElement('code');
+    code.textContent = range.toString();
+    range.deleteContents();
+    range.insertNode(code);
+    const contents = document.createRange();
+    contents.selectNodeContents(code);
+    selection.removeAllRanges();
+    selection.addRange(contents);
+    return true;
 }
 
 function changeSelectionCase(root: HTMLElement, mode: TextCaseMode): boolean {

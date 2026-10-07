@@ -33,3 +33,23 @@ export function replaceTextInElement(
         node = walker.nextNode();
     }
 }
+
+/**
+ * Puts a non-breaking space after an inserted chip unless whitespace already
+ * follows it. A plain space collapses at the end of a line, which would glue
+ * the next typed word to the chip. Returns a caret range after that space.
+ */
+export function caretAfterChipSpace(chip: Node): Range {
+    let next = chip.nextSibling;
+    while (next instanceof Text && next.data === '') next = next.nextSibling;
+    const range = document.createRange();
+    if (next instanceof Text && /^\s/u.test(next.data)) {
+        range.setStart(next, 1);
+    } else {
+        const space = document.createTextNode(' ');
+        chip.parentNode?.insertBefore(space, chip.nextSibling);
+        range.setStart(space, 1);
+    }
+    range.collapse(true);
+    return range;
+}

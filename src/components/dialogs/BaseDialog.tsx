@@ -1,5 +1,6 @@
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { useScrollLock } from '../../hooks/useScrollLock';
 import { focusableElements } from '../../utils/dom';
 import { classNames } from '../../utils/events';
 
@@ -27,6 +28,7 @@ export function BaseDialog({
     onClose,
 }: BaseDialogProps) {
     const panel = useRef<HTMLElement>(null);
+    useScrollLock();
 
     useEffect(() => {
         if (panel.current) focusableElements(panel.current)[0]?.focus();

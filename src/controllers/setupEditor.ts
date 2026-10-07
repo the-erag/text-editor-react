@@ -10,6 +10,7 @@ import {
     navigateTableCell,
 } from '../commands/tableCommands';
 import { insertLink, insertMedia, insertTable } from '../commands/insertCommands';
+import { READ_ONLY_COMMANDS, READ_ONLY_DIALOGS } from '../constants/editorCommands';
 import { KEYBOARD_SHORTCUTS } from '../constants/keyboardShortcuts';
 import { computed, type SetupScope } from '../hooks/useSetup';
 import type {
@@ -70,7 +71,7 @@ const EMPTY_CELL_PROPERTIES: CellPropertiesValue = {
     verticalAlign: '',
 };
 
-const DIALOG_SHORTCUTS = new Set(['link', 'preview']);
+const DIALOG_SHORTCUTS = new Set(['link', 'preview', 'find-replace']);
 
 interface EditorSetupSources {
     props: ReadonlyRef<EditorProps>;
@@ -220,7 +221,7 @@ export function setupEditor(scope: SetupScope, sources: EditorSetupSources) {
         mergeTags.handleInput();
     }
     function restoreAndRun(id: string, value?: string): void {
-        if (locked.value || !editor.root.value) return;
+        if (!editor.root.value || (locked.value && !READ_ONLY_COMMANDS.includes(id))) return;
         if (id === 'saveSelection') {
             selection.save();
             return;
@@ -273,7 +274,7 @@ export function setupEditor(scope: SetupScope, sources: EditorSetupSources) {
         if (executeEditorCommand(editor.root.value, id, value, executeNativeCommand)) syncInput();
     }
     function openDialog(name: string): void {
-        if (locked.value && !['preview', 'source', 'shortcuts', 'about'].includes(name)) return;
+        if (locked.value && !READ_ONLY_DIALOGS.includes(name)) return;
         if (inlineImageUpload.isOpen.value) {
             void inlineImageUpload.close().then(() => openDialog(name));
             return;
@@ -301,7 +302,8 @@ export function setupEditor(scope: SetupScope, sources: EditorSetupSources) {
         if (anchor) {
             anchor.href = value.url;
             anchor.textContent = value.text || value.url;
-            anchor.title = value.title;
+            if (value.title) anchor.title = value.title;
+            else anchor.removeAttribute('title');
             if (value.target === '_blank') {
                 anchor.target = '_blank';
                 anchor.rel = 'noopener noreferrer';
@@ -315,6 +317,15 @@ export function setupEditor(scope: SetupScope, sources: EditorSetupSources) {
     }
     function unlink(): void {
         selection.restore();
+        const anchor = getSelectedAnchor();
+        const current = window.getSelection();
+        if (anchor && current) {
+            // `unlink` does nothing on a collapsed caret, so select the whole link first.
+            const range = document.createRange();
+            range.selectNodeContents(anchor);
+            current.removeAllRanges();
+            current.addRange(range);
+        }
         executeNativeCommand('unlink');
         syncInput();
         closeDialog();
@@ -396,15 +407,22 @@ export function setupEditor(scope: SetupScope, sources: EditorSetupSources) {
         const key = `${prefix}${shift}${event.key.toLowerCase()}`;
         const command = KEYBOARD_SHORTCUTS[key];
         if (!command) return false;
+        const isDialog = DIALOG_SHORTCUTS.has(command);
+        const allowed = isDialog ? READ_ONLY_DIALOGS : READ_ONLY_COMMANDS;
+        // Leave blocked shortcuts (like Ctrl+F) to the browser while readonly.
+        if (locked.value && !allowed.includes(command)) return false;
         event.preventDefault();
-        if (command.includes('-') || DIALOG_SHORTCUTS.has(command)) openDialog(command);
+        if (isDialog) openDialog(command);
         else restoreAndRun(command);
         return true;
     }
     function handleKeydown(event: KeyboardEvent): void {
         props.value.onKeyDown?.(event);
+        if (locked.value) {
+            commandShortcut(event);
+            return;
+        }
         if (
-            locked.value ||
             mentions.handleKeydown(event) ||
             mergeTags.handleKeydown(event) ||
             mentions.handleRemoval(event) ||

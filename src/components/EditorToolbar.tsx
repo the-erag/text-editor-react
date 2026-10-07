@@ -7,7 +7,9 @@ import {
     type ReactNode,
 } from 'react';
 import { TOOLBAR_ITEMS, parseToolbar } from '../config/toolbarConfig';
-import { useIsomorphicLayoutEffect, useLatest } from '../hooks/useSetup';
+import { isReadOnlyAction } from '../constants/editorCommands';
+import { useFloatingPosition } from '../hooks/useFloatingPosition';
+import { useLatest } from '../hooks/useSetup';
 import { useToolbarOverflow } from '../hooks/useToolbarOverflow';
 import type {
     EditorToolbarGroup,
@@ -31,6 +33,7 @@ interface EditorToolbarProps {
     activeCommands: Record<string, boolean>;
     availableCommands: Record<string, boolean>;
     disabled: boolean;
+    locked: boolean;
     insideTable: boolean;
     start?: ReactNode;
     end?: ReactNode;
@@ -46,8 +49,9 @@ const ALIGNMENT_COMMANDS: TextAlignmentCommand[] = [
 ];
 
 export function EditorToolbar(props: EditorToolbarProps) {
-    const { config, activeCommands, availableCommands, disabled, start, end } = props;
+    const { config, activeCommands, availableCommands, disabled, locked, start, end } = props;
     const container = useRef<HTMLDivElement>(null);
+    const popover = useRef<HTMLDivElement>(null);
     const [open, setOpen] = useState<string | null>(null);
     const [moreExpanded, setMoreExpanded] = useState(false);
     const [selectedCase, setSelectedCase] = useState<TextCaseMode | null>(null);
@@ -57,7 +61,7 @@ export function EditorToolbar(props: EditorToolbarProps) {
         numlist: '',
     });
     const [popoverAnchor, setPopoverAnchor] = useState<HTMLElement | null>(null);
-    const [popoverLeft, setPopoverLeft] = useState(8);
+    const popoverStyle = useFloatingPosition(open ? popoverAnchor : null, popover, null);
     const selectedAlignment =
         ALIGNMENT_COMMANDS.find((command) => activeCommands[command]) ?? 'alignleft';
     const selectedList: ListCommand | null = activeCommands.numlist
@@ -67,7 +71,6 @@ export function EditorToolbar(props: EditorToolbarProps) {
           : null;
     const openListCommand: ListCommand | null =
         open === 'bullist' || open === 'numlist' ? open : null;
-    const popoverStyle = { left: `${popoverLeft}px` };
     const groups = parseToolbar(props.toolbar)
         .map((group) => ({
             ...group,
@@ -78,23 +81,10 @@ export function EditorToolbar(props: EditorToolbarProps) {
     const visibleCount = useToolbarOverflow(container, groups.length, layoutKey);
     const visible = groups.slice(0, visibleCount);
     const overflow = groups.slice(visibleCount);
-    const state = useLatest({ moreExpanded, popoverAnchor });
+    const state = useLatest({ moreExpanded });
 
     function available(item: ToolbarItemDefinition): boolean {
         return !item.plugin || config.plugins.includes(item.plugin as never);
-    }
-    function positionPopover(): void {
-        const toolbar = container.current;
-        const anchor = state.value.popoverAnchor;
-        const popover = toolbar?.querySelector<HTMLElement>('.erag-toolbar__popover');
-        if (!toolbar || !anchor || !popover) return;
-
-        const toolbarRect = toolbar.getBoundingClientRect();
-        const anchorRect = anchor.getBoundingClientRect();
-        const inset = 8;
-        const preferredLeft = anchorRect.left - toolbarRect.left;
-        const maximumLeft = Math.max(inset, toolbarRect.width - popover.offsetWidth - inset);
-        setPopoverLeft(Math.min(Math.max(preferredLeft, inset), maximumLeft));
     }
     function togglePopover(name: string, event: MouseEvent<HTMLElement>): void {
         const willOpen = open !== name;
@@ -144,7 +134,13 @@ export function EditorToolbar(props: EditorToolbarProps) {
         return Boolean(item.command && availableCommands[item.command]);
     }
     function isDisabled(item: ToolbarItemDefinition): boolean {
-        return disabled || (isHistoryCommand(item) && !isAvailable(item));
+        // "More" only reveals buttons, so it stays usable while readonly.
+        if (item.name === 'more') return disabled;
+        return (
+            disabled ||
+            (locked && !isReadOnlyAction(item)) ||
+            (isHistoryCommand(item) && !isAvailable(item))
+        );
     }
     function isActive(item: ToolbarItemDefinition): boolean {
         if (item.name === 'casechange') return open === 'casechange';
@@ -210,11 +206,6 @@ export function EditorToolbar(props: EditorToolbarProps) {
         );
     }
 
-    useIsomorphicLayoutEffect(() => {
-        if (open && popoverAnchor) positionPopover();
-        // Position once the opened popover has rendered.
-    }, [open, popoverAnchor]);
-
     useEffect(() => {
         function outside(event: PointerEvent): void {
             const target = event.target as Node | null;
@@ -233,11 +224,7 @@ export function EditorToolbar(props: EditorToolbarProps) {
             setMoreExpanded(false);
         }
         document.addEventListener('pointerdown', outside);
-        window.addEventListener('resize', positionPopover);
-        return () => {
-            document.removeEventListener('pointerdown', outside);
-            window.removeEventListener('resize', positionPopover);
-        };
+        return () => document.removeEventListener('pointerdown', outside);
         // Listeners read the latest state through refs.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -293,65 +280,61 @@ export function EditorToolbar(props: EditorToolbarProps) {
                     ))}
                 </div>
             )}
-            {open === 'forecolor' && (
-                <ColorPalette
+            {open && (
+                <div
+                    ref={popover}
                     className="erag-toolbar__popover"
                     style={popoverStyle}
-                    colors={config.textColors}
-                    current=""
-                    label="Text color"
-                    onSelect={(color) => chooseColor('forecolor', color)}
-                />
-            )}
-            {open === 'casechange' && (
-                <CaseChangeMenu
-                    className="erag-toolbar__popover"
-                    style={popoverStyle}
-                    mode={selectedCase}
-                    onSelect={chooseCase}
-                    onClose={() => setOpen(null)}
-                />
-            )}
-            {open === 'lineheight' && (
-                <LineHeightMenu
-                    className="erag-toolbar__popover"
-                    style={popoverStyle}
-                    options={config.lineHeightFormats}
-                    selected={selectedLineHeight}
-                    onSelect={chooseLineHeight}
-                    onClose={() => setOpen(null)}
-                />
-            )}
-            {open === 'alignment' && (
-                <AlignmentMenu
-                    className="erag-toolbar__popover"
-                    style={popoverStyle}
-                    selected={selectedAlignment}
-                    onSelect={chooseAlignment}
-                    onClose={() => setOpen(null)}
-                />
-            )}
-            {openListCommand && (
-                <ListMenu
-                    key={openListCommand}
-                    className="erag-toolbar__popover"
-                    style={popoverStyle}
-                    command={openListCommand}
-                    active={selectedList === openListCommand}
-                    selectedStyle={selectedListStyles[openListCommand]}
-                    onSelect={chooseList}
-                    onClose={() => setOpen(null)}
-                />
-            )}
-            {open === 'backcolor' && (
-                <ColorPalette
-                    className="erag-toolbar__popover"
-                    style={popoverStyle}
-                    colors={config.backgroundColors}
-                    current=""
-                    label="Background color"
-                    onSelect={(color) => chooseColor('backcolor', color)}
-                />
+                >
+                    {open === 'forecolor' && (
+                        <ColorPalette
+                            colors={config.textColors}
+                            current=""
+                            label="Text color"
+                            onSelect={(color) => chooseColor('forecolor', color)}
+                        />
+                    )}
+                    {open === 'casechange' && (
+                        <CaseChangeMenu
+                            mode={selectedCase}
+                            onSelect={chooseCase}
+                            onClose={() => setOpen(null)}
+                        />
+                    )}
+                    {open === 'lineheight' && (
+                        <LineHeightMenu
+                            options={config.lineHeightFormats}
+                            selected={selectedLineHeight}
+                            onSelect={chooseLineHeight}
+                            onClose={() => setOpen(null)}
+                        />
+                    )}
+                    {open === 'alignment' && (
+                        <AlignmentMenu
+                            selected={selectedAlignment}
+                            onSelect={chooseAlignment}
+                            onClose={() => setOpen(null)}
+                        />
+                    )}
+                    {openListCommand && (
+                        <ListMenu
+                            key={openListCommand}
+                            command={openListCommand}
+                            active={selectedList === openListCommand}
+                            selectedStyle={selectedListStyles[openListCommand]}
+                            onSelect={chooseList}
+                            onClose={() => setOpen(null)}
+                        />
+                    )}
+                    {open === 'backcolor' && (
+                        <ColorPalette
+                            colors={config.backgroundColors}
+                            current=""
+                            label="Background color"
+                            onSelect={(color) => chooseColor('backcolor', color)}
+                        />
+                    )}
+                </div>
             )}
             {end != null && (
                 <div

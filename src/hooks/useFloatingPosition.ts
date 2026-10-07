@@ -108,3 +108,31 @@ export function useFloatingPosition(
 
     return style;
 }
+
+/**
+ * Keeps a nested submenu inside the viewport: it opens to the left when there
+ * is room there, and otherwise shifts back over its parent menu.
+ */
+export function placeNestedMenu(entry: HTMLElement): void {
+    const nested = entry.querySelector<HTMLElement>(':scope > .erag-menu--nested');
+    if (!nested) return;
+    nested.classList.remove('erag-menu--flip');
+    nested.style.removeProperty('left');
+    nested.style.removeProperty('top');
+    const rect = nested.getBoundingClientRect();
+    const entryRect = entry.getBoundingClientRect();
+    const maxRight = window.innerWidth - VIEWPORT_PADDING;
+    const maxBottom = window.innerHeight - VIEWPORT_PADDING;
+    if (rect.right > maxRight) {
+        if (entryRect.left - rect.width >= VIEWPORT_PADDING)
+            nested.classList.add('erag-menu--flip');
+        else {
+            const left = Math.max(VIEWPORT_PADDING, maxRight - rect.width);
+            nested.style.left = `${left - entryRect.left}px`;
+        }
+    }
+    if (rect.bottom > maxBottom) {
+        const top = Math.max(VIEWPORT_PADDING, rect.top - (rect.bottom - maxBottom));
+        nested.style.top = `${top - entryRect.top}px`;
+    }
+}

@@ -1,12 +1,17 @@
 import { useRef, type KeyboardEvent } from 'react';
 import { resolveMenuItemIcon } from '../../config/menuIcons';
+import { isReadOnlyAction } from '../../constants/editorCommands';
+import { placeNestedMenu, useFloatingPosition } from '../../hooks/useFloatingPosition';
 import type { MenuItemDefinition } from '../../types';
 import { classNames, preventDefault } from '../../utils/events';
 import { EditorIcon } from '../icons/EditorIcon';
 
 interface FloatingMenuProps {
     items: MenuItemDefinition[];
+    /** Menubar button the top-level menu is anchored to. */
+    anchor?: HTMLElement | null;
     disabled: boolean;
+    locked: boolean;
     activeCommands: Record<string, boolean>;
     availableCommands: Record<string, boolean>;
     insideTable: boolean;
@@ -16,16 +21,26 @@ interface FloatingMenuProps {
 }
 
 export function FloatingMenu(props: FloatingMenuProps) {
-    const { items, disabled, activeCommands, availableCommands, insideTable, onSelect, onClose } =
-        props;
+    const { items, disabled, locked, activeCommands, availableCommands, insideTable } = props;
+    const { onSelect, onClose } = props;
     const level = props.level ?? 0;
     const menu = useRef<HTMLDivElement>(null);
+    const floatingStyle = useFloatingPosition(
+        level === 0 ? (props.anchor ?? null) : null,
+        menu,
+        null,
+    );
 
     function isDisabled(item: MenuItemDefinition): boolean {
         const explicitlyUnavailable = Boolean(
             item.command && availableCommands[item.command] === false,
         );
-        return disabled || explicitlyUnavailable || Boolean(item.tableOnly && !insideTable);
+        return (
+            disabled ||
+            (locked && !worksWhileLocked(item)) ||
+            explicitlyUnavailable ||
+            Boolean(item.tableOnly && !insideTable)
+        );
     }
     function isActive(item: MenuItemDefinition): boolean {
         return Boolean(item.command && !isDisabled(item) && activeCommands[item.command]);
@@ -71,6 +86,7 @@ export function FloatingMenu(props: FloatingMenuProps) {
         <div
             ref={menu}
             className={classNames('erag-menu', level > 0 && 'erag-menu--nested')}
+            style={level === 0 ? floatingStyle : undefined}
             role="menu"
             onKeyDown={onKeydown}
         >
@@ -85,6 +101,8 @@ export function FloatingMenu(props: FloatingMenuProps) {
                     <div
                         key={item.id}
                         className="erag-menu__entry"
+                        onMouseEnter={item.children ? placeNested : undefined}
+                        onFocus={item.children ? placeNested : undefined}
                     >
                         <button
                             type="button"
@@ -117,6 +135,7 @@ export function FloatingMenu(props: FloatingMenuProps) {
                             <FloatingMenu
                                 items={item.children}
                                 disabled={disabled}
+                                locked={locked}
                                 activeCommands={activeCommands}
                                 availableCommands={availableCommands}
                                 insideTable={insideTable}
@@ -130,4 +149,12 @@ export function FloatingMenu(props: FloatingMenuProps) {
             )}
         </div>
     );
+}
+
+function placeNested(event: { currentTarget: HTMLElement }): void {
+    placeNestedMenu(event.currentTarget);
+}
+
+function worksWhileLocked(item: MenuItemDefinition): boolean {
+    return isReadOnlyAction(item) || Boolean(item.children?.some(worksWhileLocked));
 }

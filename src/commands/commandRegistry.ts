@@ -3,6 +3,7 @@ import { insertChecklist, isChecklistActive } from './checklistCommands';
 import { executeFormatCommand, queryFormatState } from './formatCommands';
 import { setListStyle } from './listCommands';
 import { insertAtSelection } from '../utils/html';
+import { isCaretInRootInline, liftNestedLists, removeInheritedFontStyles } from '../utils/blocks';
 import { executeTableCommand } from './tableCommands';
 import { printEditorContent } from './printCommands';
 import type { NativeEditorCommand } from '../types';
@@ -19,6 +20,9 @@ const TABLE_COMMANDS = new Set([
     'columnAfter',
     'deleteColumn',
 ]);
+const LIST_COMMANDS = new Set(['bullist', 'numlist', 'checklist']);
+const INDENT_COMMANDS = new Set(['indent', 'outdent']);
+
 export function executeEditorCommand(
     root: HTMLElement,
     id: string,
@@ -26,9 +30,15 @@ export function executeEditorCommand(
     executeCommand: NativeEditorCommand,
 ): boolean {
     if (TABLE_COMMANDS.has(id)) return executeTableCommand(root, id);
-    if (id === 'checklist') return insertChecklist(root, executeCommand);
-    if ((id === 'bullist' || id === 'numlist') && value !== undefined)
-        return setListStyle(root, id === 'bullist' ? 'ul' : 'ol', value, executeCommand);
+    if (LIST_COMMANDS.has(id) || INDENT_COMMANDS.has(id)) {
+        const changed = LIST_COMMANDS.has(id)
+            ? executeListCommand(root, id, value, executeCommand)
+            : executeFormatCommand(root, id, value, executeCommand);
+        normalizeListToggle(root, executeCommand);
+        removeInheritedFontStyles(root);
+        return changed;
+    }
+    if (id === 'selectall') return selectEditorContent(root);
     if (id === 'hr') return insertAtSelection(root, '<hr><p><br></p>');
     if (id === 'anchor')
         return insertAtSelection(
@@ -38,6 +48,41 @@ export function executeEditorCommand(
     if (id === 'print') return printEditorContent(root);
     return executeFormatCommand(root, id, value, executeCommand);
 }
+function executeListCommand(
+    root: HTMLElement,
+    id: string,
+    value: string | undefined,
+    executeCommand: NativeEditorCommand,
+): boolean {
+    if (id === 'checklist') return insertChecklist(root, executeCommand);
+    if (value !== undefined)
+        return setListStyle(root, id === 'bullist' ? 'ul' : 'ol', value, executeCommand);
+    return executeFormatCommand(root, id, value, executeCommand);
+}
+
+/**
+ * Chrome nests a new list inside the current paragraph, and turning a list off
+ * (or outdenting its last level) leaves the text directly in the editor root.
+ */
+function normalizeListToggle(root: HTMLElement, executeCommand: NativeEditorCommand): void {
+    liftNestedLists(root);
+    if (isCaretInRootInline(root)) executeCommand('formatBlock', 'p');
+}
+
+/**
+ * Selects the editor content through the Selection API, which also works while
+ * the editor is readonly and `selectAll` would select the whole page.
+ */
+function selectEditorContent(root: HTMLElement): boolean {
+    const selection = window.getSelection();
+    if (!selection) return false;
+    const range = document.createRange();
+    range.selectNodeContents(root);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return true;
+}
+
 export async function executeAsyncEditorCommand(
     root: HTMLElement,
     id: string,

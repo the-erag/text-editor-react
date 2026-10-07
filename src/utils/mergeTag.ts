@@ -1,4 +1,5 @@
 import type { MergeTagItem, MergeTagQueryMatch, NativeEditorCommand } from '../types';
+import { caretAfterChipSpace } from './dom';
 
 const MERGE_TAG_PATTERN = /\{\{([^{}\n\r]*)$/u;
 const MERGE_TAG_SELECTOR = 'span.erag-merge-tag[data-erag-merge-tag="true"]';
@@ -39,13 +40,10 @@ export function insertMergeTagAtRange(
     if (!selection) return false;
     const tag = createMergeTagElement(item);
     range.deleteContents();
-    const space = document.createTextNode(' ');
-    range.insertNode(space);
     range.insertNode(tag);
-    range.setStartAfter(space);
-    range.collapse(true);
+    const caret = caretAfterChipSpace(tag);
     selection.removeAllRanges();
-    selection.addRange(range);
+    selection.addRange(caret);
     root.dispatchEvent(
         new InputEvent('input', {
             bubbles: true,

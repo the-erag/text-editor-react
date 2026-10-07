@@ -17,6 +17,7 @@ interface EditorMenuBarProps {
     menus: true | EditorMenuName[];
     plugins: string[];
     disabled: boolean;
+    locked: boolean;
     activeCommands: Record<string, boolean>;
     availableCommands: Record<string, boolean>;
     insideTable: boolean;
@@ -36,6 +37,7 @@ interface EditorMenuBarProps {
 
 export function EditorMenuBar(props: EditorMenuBarProps) {
     const [open, setOpen] = useState<EditorMenuName | null>(null);
+    const [anchor, setAnchor] = useState<HTMLElement | null>(null);
     const [pendingSelection, setPendingSelection] = useState<MenuItemDefinition | null>(null);
     const [currentDate, setCurrentDate] = useState(() => new Date());
     const root = useRef<HTMLDivElement>(null);
@@ -76,8 +78,11 @@ export function EditorMenuBar(props: EditorMenuBarProps) {
                 return children ? { ...item, children: resolveItems(children) } : item;
             });
     }
-    function toggle(name: EditorMenuName): void {
-        if (props.disabled) return;
+    function isMenuDisabled(name: EditorMenuName): boolean {
+        return props.disabled || (props.locked && (name === 'merge-tags' || name === 'templates'));
+    }
+    function toggle(name: EditorMenuName, button: HTMLElement): void {
+        if (isMenuDisabled(name)) return;
         setCurrentDate(new Date());
         props.onOpening(name);
         if (name === 'merge-tags') {
@@ -90,6 +95,7 @@ export function EditorMenuBar(props: EditorMenuBarProps) {
             props.onTemplatesOpen();
             return;
         }
+        setAnchor(button);
         setOpen((current) => (current === name ? null : name));
     }
     function isOpen(name: EditorMenuName): boolean {
@@ -146,9 +152,9 @@ export function EditorMenuBar(props: EditorMenuBarProps) {
                         aria-label={menu.label}
                         aria-expanded={isOpen(menu.name)}
                         title={menu.label}
-                        disabled={props.disabled}
+                        disabled={isMenuDisabled(menu.name)}
                         onMouseDown={preventDefault}
-                        onClick={() => toggle(menu.name)}
+                        onClick={(event) => toggle(menu.name, event.currentTarget)}
                     >
                         <EditorIcon
                             className="erag-menubar__icon"
@@ -162,7 +168,9 @@ export function EditorMenuBar(props: EditorMenuBarProps) {
                         open === menu.name && (
                             <FloatingMenu
                                 items={menu.items}
+                                anchor={anchor}
                                 disabled={props.disabled}
+                                locked={props.locked}
                                 activeCommands={props.activeCommands}
                                 availableCommands={props.availableCommands}
                                 insideTable={props.insideTable}

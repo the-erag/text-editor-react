@@ -24,6 +24,13 @@ export function useToolbarOverflow(
         if (!element) return;
         const count = itemCountRef.current;
         const widths = groupWidths.current;
+        const styles = window.getComputedStyle(element);
+
+        // A toolbar that scrolls sideways (narrow screens) shows every group.
+        if (styles.overflowX !== 'visible') {
+            setVisibleCount(count);
+            return;
+        }
 
         const renderedGroups = element.querySelectorAll<HTMLElement>(
             '[data-erag-toolbar-group-index]',
@@ -38,7 +45,6 @@ export function useToolbarOverflow(
 
         if (widths.slice(0, count).some((width) => !width)) return;
 
-        const styles = window.getComputedStyle(element);
         const padding =
             Number.parseFloat(styles.paddingInlineStart) +
             Number.parseFloat(styles.paddingInlineEnd);
@@ -86,10 +92,17 @@ export function useToolbarOverflow(
 
     useEffect(() => {
         const element = container.current;
-        if (!element || typeof ResizeObserver === 'undefined') return;
-        const observer = new ResizeObserver(() => measure());
-        observer.observe(element);
-        return () => observer.disconnect();
+        if (!element) return;
+        const remeasure = (): void => measure();
+        const observer =
+            typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(remeasure);
+        observer?.observe(element);
+        // The overflow mode comes from a media query, which can switch without a size change.
+        window.addEventListener('resize', remeasure);
+        return () => {
+            observer?.disconnect();
+            window.removeEventListener('resize', remeasure);
+        };
     }, [container, measure]);
 
     return visibleCount;

@@ -30,11 +30,7 @@ export function executeTableCommand(root: HTMLElement, id: string): boolean {
             if (currentRow.cells[index]) currentRow.deleteCell(index);
         return true;
     }
-    if (id === 'mergeCells') {
-        cell.colSpan += 1;
-        cell.nextElementSibling?.remove();
-        return true;
-    }
+    if (id === 'mergeCells') return mergeWithNextCell(cell);
     if (id === 'splitCell' && cell.colSpan > 1) {
         cell.colSpan -= 1;
         const next = document.createElement(cell.tagName.toLowerCase());
@@ -47,6 +43,24 @@ export function executeTableCommand(root: HTMLElement, id: string): boolean {
         return true;
     }
     return false;
+}
+/**
+ * Merges a cell with the next one in its row, keeping the content of both.
+ */
+function mergeWithNextCell(cell: HTMLTableCellElement): boolean {
+    const next = cell.nextElementSibling;
+    if (!(next instanceof HTMLTableCellElement)) return false;
+    if (hasCellContent(next)) {
+        if (!hasCellContent(cell)) cell.replaceChildren();
+        else cell.append(document.createElement('br'));
+        cell.append(...next.childNodes);
+    }
+    cell.colSpan += next.colSpan;
+    next.remove();
+    return true;
+}
+function hasCellContent(cell: HTMLTableCellElement): boolean {
+    return Boolean(cell.textContent?.trim() || cell.querySelector('img,video,audio,iframe,table'));
 }
 function emptyRow(source: HTMLTableRowElement): HTMLTableRowElement {
     const row = document.createElement('tr');
